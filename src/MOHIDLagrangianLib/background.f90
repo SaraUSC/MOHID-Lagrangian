@@ -643,7 +643,7 @@
                     xx4d(:,:,k,1) = xx4d(:,:,1,1)
                     yy4d(:,:,k,1) = yy4d(:,:,1,1)
                 end do
-                zz4d(1,1,:,1) = abs(self%dim(zIndx)%field(:size(curr%field,2)-1) - self%dim(zIndx)%field(2:))
+                zz4d(1,1,:,1) = abs(self%dim(zIndx)%field(:size(curr%field,3)-1) - self%dim(zIndx)%field(2:))
                 do i=2, size(zz4d,1)
                     zz4d(i,1,:,1) = zz4d(1,1,:,1)
                 end do
