@@ -378,6 +378,7 @@
             rateRead = .true.
             rate_file = att_val
             emitting_fixed = .false.
+            emitting_rate = 0.
             tag = "scale"
             att_name="value"
             call XMLReader%getNodeAttribute(source_ratefile, tag, att_name, att_val, readflag, mandatory = .false.)            
