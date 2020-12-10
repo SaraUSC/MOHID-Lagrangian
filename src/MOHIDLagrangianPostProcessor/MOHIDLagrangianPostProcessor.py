@@ -98,12 +98,10 @@ def main():
         # If plotonly flag > Runs only plotting stage
         if args.plotonly is True:
             plotResultsFromRecipe(outDirLocal, recipe)
-            return
-
-        postProcessor = PostProcessor(caseXML, recipe, outDir, outDirLocal)
-        postProcessor.run()
-
-        if checkPlotRecipe(recipe):
-            plotResultsFromRecipe(outDirLocal, recipe)
+        else:
+            postProcessor = PostProcessor(caseXML, recipe, outDir, outDirLocal)
+            postProcessor.run()
+            if checkPlotRecipe(recipe):
+                plotResultsFromRecipe(outDirLocal, recipe)
 
 main()
