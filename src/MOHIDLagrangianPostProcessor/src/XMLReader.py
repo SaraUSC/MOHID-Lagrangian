@@ -68,9 +68,11 @@ def checkPlotRecipe(xmlFile):
 
 def getPlotTimeFromRecipe(xmlFile):
     root = ET.parse(xmlFile).getroot()
-    fieldName = root.findall('plot/time')[0]
-    freq = fieldName.get('value')
-    kind = fieldName.get('key')
+    #assing None if they do not exist
+    freq, kind = None, None
+    for fieldName in root.findall('plot/time'):
+        freq = fieldName.get('value')
+        kind = fieldName.get('key')
     return freq, kind
 
 
@@ -126,6 +128,6 @@ def getNormalizeFromRecipe(xmlFile):
     fieldList = []
     root = ET.parse(xmlFile).getroot()
     for fieldName in root.findall('plot/normalize'):
-            fieldList.append(fieldName.get('key'))
+        fieldList.append(fieldName.get('key'))
     return fieldList
 

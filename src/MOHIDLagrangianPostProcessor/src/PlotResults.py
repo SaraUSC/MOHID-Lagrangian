@@ -21,40 +21,47 @@ import matplotlib.cm as cmx
 class Plot:
     """ Parent class to plot a dataArray. """
 
-    def __init__(self, dataArray, output_filename, title, units):
-        self.dataArray = dataArray
+    def __init__(self):
         self.fig = []
         self.axarr = []
         self.cbar = []
+        self.background = []
+        self.colorbar = []
         self.extent = []
         self.time_key = []
-        self.time_size = self.dataArray.shape[0]
         self.setup_plot = {}
-        self.output_filename = output_filename
-        self.title = title
-        self.units = units
         self.plot_type = []
         self.n_plot_max_threshold = 12
         self.plot_every_n_step = 4
+        self.proj = ccrs.PlateCarree()
+        self.cbar_key = []
+    
+    def setBackground(self, background):
+        self.background = background
+    
+    def setColobar(self, colorbar):
+        self.colorbar = colorbar
 
-    def setTimeKey(self):
+    def setTimeKey(self, dataArray):
         """ set the time key from dataArray if exist"""
-        if hastime(self.dataArray):
-            self.time_key = get_time_key(self.dataArray)
+        if hastime(dataArray):
+            self.time_key = get_time_key(dataArray)
         else:
             self.time_key = None
 
-    def setSliceTimeDataArray(self):
+    def setSliceTimeDataArray(self, dataArray):
         """ Slice to dataArray to fit into a graph. """
 
-        if hastime(self.dataArray):
+        if hastime(dataArray):
             # If time_size is higher than 12 (for example, 30 days, it plots
             # one of each four days.
-            if self.time_size > self.n_plot_max_threshold: # Timesteps > 12 slices 
-                time_slice = slice(0, -1, int(self.time_size/self.plot_every_n_step))
-                self.dataArray = self.dataArray.isel({self.time_key: time_slice})
+            time_size = dataArray.shape[0]
+            if time_size > self.n_plot_max_threshold: # Timesteps > 12 slices 
+                time_slice = slice(0, -1, int(time_size/self.plot_every_n_step))
+                dataArray = dataArray.isel({self.time_key: time_slice})
+        return dataArray
 
-    def setFigureAxisLayout(self):
+    def setFigureAxisLayout(self, dataArray):
         """
         Creates the figure layout to plot.
 
@@ -62,21 +69,22 @@ class Plot:
             None.
 
         """
-        time_plot_flag = hastime(self.dataArray)
+        time_plot_flag = hastime(dataArray)
+        time_size = dataArray.shape[0]
         if time_plot_flag:
-            if self.time_size < 4:
+            if time_size < 4:
                 nrows = 1
-                ncols = self.time_size
-            elif self.time_size == 4:
+                ncols = time_size
+            elif time_size == 4:
                 nrows = 2
                 ncols = 2
-            elif self.time_size == 6:
+            elif time_size == 6:
                 nrows = 2
                 ncols = 3
-            elif self.time_size == 8:
+            elif time_size == 8:
                 nrows = 2
                 ncols = 4
-            elif self.time_size == 12:
+            elif time_size == 12:
                 nrows = 3
                 ncols = 4
             else:
@@ -92,110 +100,78 @@ class Plot:
 
         self.fig, self.axarr = plt.subplots(nrows=nrows, ncols=ncols,
                                             figsize=figsize,
-                                            subplot_kw={'projection': ccrs.PlateCarree()})
+                                            subplot_kw={'projection': self.proj})
 
         if not isinstance(self.axarr, np.ndarray):
             self.axarr = np.array([self.axarr])
 
-    def setColorbar(self):
-        vmin, vmax = get_color_lims(self.dataArray, robust=True)
-        cmap_key = get_cmap_key(vmin, vmax)
-        cmap_norm = get_cmap_norm(vmin, vmax)
-        cbar_x, cbar_y, size_x, size_y = get_cbar_position(self.axarr) # get extent
-        cbar_ax = self.fig.add_axes([cbar_x, cbar_y, size_x, size_y])
-        scalarMap = cmx.ScalarMappable(norm=cmap_norm, cmap=cmap_key)
-        self.cbar = self.fig.colorbar(scalarMap, cax=cbar_ax)
-        self.cbar.set_label(self.units)
-
-    def getBackground(self, ax, extent):
-        """Get the background map, gridlines and ticks for the current axis."""
-        ax = get_background_map(ax, extent)
-        gl = ax.gridlines(draw_labels=True, color='gray', linestyle='--')
-        gl.xlabels_top = gl.ylabels_right = False
-        gl.xformatter = LONGITUDE_FORMATTER
-        gl.yformatter = LATITUDE_FORMATTER
-
-        if np.abs((extent[3]-extent[2]) > ((extent[1]-extent[0]))):
-            gl.xlabel_style = {'rotation': 45}
-        return ax
-
-    def getScaleBar(self, ax):
+    def getScaleBar(self, ax, dataArray):
         """Set the scale bar in km for the current axis"""
-        scale_bar_lenght = get_horizontal_scale(self.dataArray)
+        scale_bar_lenght = get_horizontal_scale(dataArray)
         scale_bar(ax, ccrs.PlateCarree(), scale_bar_lenght)
 
 
 class PlotPolygon(Plot):
     """ Module to plot polygon dataArrays"""
 
-    def __init__(self, dataArray, output_filename, title, units, polygon_file):
-        Plot.__init__(self, dataArray, output_filename, title, units)
+    def __init__(self, polygon_file):
+        Plot.__init__(self)
         self.polygon_file = polygon_file
+        self.geoDataFrame = gpd.read_file(self.polygon_file).to_crs({"init": 'EPSG:4326'})
+        self.geoDataFrame['index'] = np.arange(0, self.geoDataFrame.shape[0])
 
     def getSetupDict(self, ax):
-        vmin, vmax = get_color_lims(self.dataArray, robust=True)
-        cmap_key = get_cmap_key(vmin, vmax)
-        cmap_norm = get_cmap_norm(vmin, vmax)
-
+        
         setup_plot = {
-              'cmap': cmap_key,
+              'cmap': self.colorbar.cmap_key,
               'ax': ax,
-              'vmin': vmin,
-              'vmax': vmax,
+              'vmin': self.colorbar.vmin,
+              'vmax': self.colorbar.vmax,
               'zorder': 1}
 
         return setup_plot
 
-    def getPlots(self):
-        geoDataFrame = gpd.read_file(self.polygon_file).to_crs({"init": 'EPSG:4326'})
-        geoDataFrame['index'] = np.arange(0, geoDataFrame.shape[0])
-        self.setTimeKey()
-        self.setFigureAxisLayout()
-        self.setSliceTimeDataArray()
-        self.setColorbar()
-
+    def getPlots(self, dataArray, title, output_filename):
+        
+        self.setTimeKey(dataArray)
+        self.setFigureAxisLayout(dataArray)
+        dataArray = self.setSliceTimeDataArray(dataArray)
+        self.axarr = self.background.addBackgroundToAxis(self.axarr)
+        self.colorbar.addColorbarToFigure(self.axarr, self.fig)
+        
         time_step = 0
         for ax in self.axarr.flat:
 
-            extent = get_extent(geoDataFrame)
-            ax = self.getBackground(ax, extent)
-
-            if hastime(self.dataArray):
-                dataArray_step = self.dataArray.isel({self.time_key: time_step})
+            if hastime(dataArray):
+                dataArray_step = dataArray.isel({self.time_key: time_step})
             else:
-                dataArray_step = self.dataArray
+                dataArray_step = dataArray
 
-            varName = self.dataArray.name
-            geoDataFrame[varName] = dataArray_step.values
+            varName = dataArray.name
+            self.geoDataFrame[varName] = dataArray_step.values
 
-            extent = get_extent(geoDataFrame)
-            ax = self.getBackground(ax, extent)
             setupPlotDict = self.getSetupDict(ax)
 
-            geoDataFrame.plot(column=varName, **setupPlotDict)
+            self.geoDataFrame.plot(column=varName, **setupPlotDict)
             time_step += 1
 
         # Creating the suptitle from the filename
-        self.fig.suptitle(self.title, fontsize='x-large')
+        self.fig.suptitle(title, fontsize='x-large')
         # Save the image
-        self.fig.savefig(self.output_filename, dpi=150)
+        self.fig.savefig(output_filename, dpi=150)
         # Save the shapefile
-        shapefile = self.output_filename.split('.')[0]+'.shp'
-        geoDataFrame.to_file(shapefile)
+        shapefile = output_filename.split('.')[0]+'.shp'
+        self.geoDataFrame.to_file(shapefile)
         plt.close()
 
 
 class PlotGrid(Plot):
     """ Module to plot grid dataArrays"""
-    def __init__(self, dataArray, output_filename, title, units, plot_type):
-        Plot.__init__(self, dataArray, output_filename, title, units)
+    def __init__(self, plot_type):
+        Plot.__init__(self)
         self.plot_type = plot_type
 
     def getSetupDict(self, ax):
-        vmin, vmax = get_color_lims(self.dataArray, robust=True)
-        cmap_key = get_cmap_key(vmin, vmax)
-        cmap_norm = get_cmap_norm(vmin, vmax)
-
         if self.plot_type == 'hist':
             setup_plot = {'ax': ax, 'zorder': 1}
 
@@ -203,40 +179,38 @@ class PlotGrid(Plot):
             setup_plot = {'x':'longitude',
                           'y':'latitude',
                           'ax': ax,
-                          'cmap': cmap_key,
-                          'vmin': vmin,
-                          'vmax': vmax,
+                          'cmap': self.colorbar.cmap_key,
+                          'vmin': self.colorbar.vmin,
+                          'vmax': self.colorbar.vmax,
                           'zorder': 1,
                           'add_colorbar': False}
         return setup_plot
 
-    def getPlots(self):
-        self.setTimeKey()
-        self.setFigureAxisLayout()
-        self.setSliceTimeDataArray
-        self.setColorbar()
-
+    def getPlots(self, dataArray, title, output_filename):
+        self.setTimeKey(dataArray)
+        self.setFigureAxisLayout(dataArray)
+        dataArray = self.setSliceTimeDataArray(dataArray)
+        self.colorbar.addColorbarToFigure(self.axarr,self.fig)
+        self.axarr = self.background.addBackgroundToAxis(self.axarr)
         time_step = 0
         for ax in self.axarr.flat:
 
-            extent = get_extent(self.dataArray)
-            if hastime(self.dataArray):
-                dataArray_step = self.dataArray.isel({self.time_key: time_step})
+            if hastime(dataArray):
+                dataArray_step = dataArray.isel({self.time_key: time_step})
             else:
-                dataArray_step = self.dataArray
+                dataArray_step = dataArray
 
             setup_plot = self.getSetupDict(ax)
             _ = getattr(dataArray_step.plot, self.plot_type)(**setup_plot)
 
-            self.getBackground(ax, extent)
-            self.getScaleBar(ax)
+            self.getScaleBar(ax, dataArray)
             time_step += 1
 
         # Creating the title from the filename
-        self.fig.suptitle(self.title, fontsize='x-large')
+        self.fig.suptitle(title, fontsize='x-large')
         # fig.tight_layout()
         # Save the title
-        self.fig.savefig(self.output_filename, dpi=150)
+        self.fig.savefig(output_filename, dpi=150)
         plt.close()
 
 
@@ -253,14 +227,20 @@ def plotResultsFromRecipe(outDir, xml_recipe):
         None.
 
     """
-    # Read the xml attributes.
+    # Read the main xml attributes.
+    plot_type = getPlotTypeFromRecipe(xml_recipe)
+    polygon_file = getPolygonFileFromRecipe(xml_recipe)
+    
+    # if there is no plot_type/polygon in the xml, leave the plot module.
+    if not (polygon_file or plot_type):
+        return       
+    
     group_freq, group_type = getPlotTimeFromRecipe(xml_recipe)
     groups = getGroupFromRecipe(xml_recipe)
     methods = getPlotMeasuresFromRecipe(xml_recipe)
-    plot_type = getPlotTypeFromRecipe(xml_recipe)
     weight_file = getPlotWeightFromRecipe(xml_recipe)
     normalize_method = getNormalizeFromRecipe(xml_recipe)
-    polygon_file = getPolygonFileFromRecipe(xml_recipe)
+    
 
     print('-> Plotting results:')
     print('-> Grouping time steps:', group_freq, group_type)
@@ -269,57 +249,85 @@ def plotResultsFromRecipe(outDir, xml_recipe):
     print('-> Normalizing:', normalize_method)
 
     # Read the dataset and the variables keys
-    ds = xr.open_mfdataset(outDir + '*.nc')
-    variables = list(ds.keys())
+    ds_raw = xr.open_mfdataset(outDir + '*.nc')
+    
+    # Split the dataset into groups from variables names. 
+    # Process each group together
+    ds_list = get_variable_groups_from_dataset(ds_raw)
+    
+    # We prepare the plotter instance with the backgrounds, axis and 
+    # all the stuff to work properly.
+    if polygon_file:
+        plotter = PlotPolygon(polygon_file[0])
+        extent = get_extent(plotter.geoDataFrame)
+    elif plot_type:
+        plotter = PlotGrid(plot_type[0])
+        extent = get_extent(ds_raw)
 
-    # Select just the desire group of variables
-    if groups:
-        variables = groupByWords(variables, groups)
-        if len(variables) == 0:
-            print('-> You did an empty group. Stopping')
-            raise ValueError
-        ds = ds[variables]
-
-    # Normalization
-    if  normalize_method:
-        normalizer = Normalizer(normalize_method, ds)
-        normalizer.setFactor()
-        normalizer.setMethodName()
-
-    for idxvar, variable in enumerate(tqdm(variables)):
-        da = ds[variable].load()
-        units = da.units
-
-        if weight_file:
-            if idxvar == 0:
-                print("-> Weighting sources with:", weight_file[0])
-                print("   %-40s | %9s" % ('Source', 'Weight'))
-            da = weight_dataarray_with_csv(da, weight_file[0])
-
-        if 'depth' in da.dims:
-            da = da.isel(depth=-1)
-
-        methods_list = []
-        for method in methods:
-            if group_freq != 'all':
-                if isgroupable(da, group_type, group_freq, method):
-                    da = group_resample(da, group_type, group_freq)
-
-            da = getattr(da, method)(dim='time')
-            methods_list.append(method)
-
+    # Initialize the background images for all the plots based on the extents.
+    # This avoid the heavy resources consumption of download detailed backgrounds .
+    bkg_images = Background(extent)
+    bkg_images.initialize()
+    plotter.setBackground(bkg_images)
+    
+    for ds in ds_list:
+        
+        variables = list(ds.keys())
+        # Select just the desire group of variables. For example, choose 
+        # a type of particle or whatever you want to group all your variables.
+        if groups:
+            variables = groupByWords(variables, groups)
+            if len(variables) == 0:
+                print('-> You did an empty group. Stopping')
+                raise ValueError
+            ds = ds[variables]
+    
+        # Normalization of the dataset.
         if normalize_method:
-            units = normalizer.getNormalizedUnits(units)
-            da = normalizer.getNormalizedDataArray(da)
-
-        da = da.where(da != 0)  # Values with 0 consider as missing value.
-
-        output_filename = outDir + '-'.join(methods_list) + '-' + variable + '.png'
-        title = get_title_methods(methods_list, variable)
-
-        if polygon_file:
-            plotter = PlotPolygon(da, output_filename, title, units, polygon_file[0])
-            plotter.getPlots()
-        else:
-            plotter = PlotGrid(da, output_filename, title, units, plot_type[0])
-            plotter.getPlots()
+            normalizer = Normalizer(normalize_method, ds)
+            normalizer.setFactor()
+            normalizer.setMethodName()
+            ds = normalizer.getNormalizedDataset(ds)
+        
+        # colorbar with common values for all the plots
+        # to compare them correctly.
+        cb = Colorbar()
+        cb.setMinMaxColor(ds)
+        cb.setCmapKey()
+        plotter.setColobar(cb)
+        
+        for idxvar, variable in enumerate(tqdm(variables)):
+            da = ds[variable].load()
+            if normalizer:
+                units = normalizer.getNormalizedUnits(da.units)
+            else:
+                units = da.units
+            cb.setUnits(units)
+    
+            if weight_file:
+                if idxvar == 0:
+                    print("-> Weighting sources with:", weight_file[0])
+                    print("   %-40s | %9s" % ('Source', 'Weight'))
+                da = weight_dataarray_with_csv(da, weight_file[0])
+    
+            if 'depth' in da.dims:
+                da = da.isel(depth=-1)
+    
+            methods_list = []
+            for method in methods:
+                if group_freq != 'all':
+                    if isgroupable(da, group_type, group_freq, method):
+                        da = group_resample(da, group_type, group_freq)
+    
+                da = getattr(da, method)(dim='time')
+                methods_list.append(method)
+    
+            da = da.where(da != 0)  # Values with 0 consider as missing value.
+    
+            output_filename = outDir + '-'.join(methods_list) + '-' + variable + '.png'
+            title = get_title_methods(methods_list, variable)
+    
+            if polygon_file:
+                plotter.getPlots(da, title, output_filename)
+            else:
+                plotter.getPlots(da, title, output_filename)

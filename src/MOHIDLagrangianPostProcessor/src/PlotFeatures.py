@@ -9,11 +9,15 @@ import xarray as xr
 from math import floor
 from matplotlib import patheffects
 import matplotlib.colors as mcolors
+import matplotlib.cm as cmx
 
 import geopandas as gpd
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.io.img_tiles as cimgt
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER,  LATITUDE_FORMATTER
+
+
 
 
 def hastime(dataArray: xr.DataArray) -> bool:
@@ -256,7 +260,7 @@ def get_background_map(ax, extent):
     return ax
 
 
-def get_color_lims(dataArray: xr.DataArray, robust: bool = True,
+def get_color_lims_dataArray(dataArray: xr.DataArray, robust: bool = True,
                    min_quartile=0.05, max_quartile=0.99):
     """
     Get the vmax and vmin from the dataArray
@@ -281,6 +285,49 @@ def get_color_lims(dataArray: xr.DataArray, robust: bool = True,
         vmax = dataArray.max().values
     return vmin, vmax
 
+def get_color_lims_dataset(dataset: xr.Dataset, robust: bool = True,
+                   min_quartile=0.05, max_quartile=0.99):
+    """
+    Get the vmax and vmin from the dataArray
+
+    Args:
+        dataArray (xr.DataArray): DESCRIPTION.
+        robust (bool, optional): True, slice data between min and max quartile.
+        extremes. Defaults to True.
+        min_quartile (float, optional): DESCRIPTION. Defaults to 0.05.
+        max_quartile (float, optional): DESCRIPTION. Defaults to 0.99.
+
+    Returns:
+        vmin (float): DESCRIPTION.
+        vmax (float): DESCRIPTION.
+
+    """
+    vmin = []
+    vmax = []
+    if robust is True:
+        for key in dataset.keys():
+            vmin.append(dataset[key].quantile(min_quartile).values)
+            vmax.append(dataset[key].quantile(max_quartile).values)
+    else:
+        for key in dataset.keys():
+            vmin.append(dataset[key].min().values)
+            vmax.append(dataset[key].max().values)
+            
+    vmin = np.min(np.array(vmin))
+    vmax = np.max(np.array(vmax))
+    return vmin, vmax
+
+def get_color_lims(dataset: xr.Dataset, robust: bool = True,
+                   min_quartile=0.05, max_quartile=0.99):
+    
+    if isinstance(dataset, xr.Dataset):
+        vmin,vmax = get_color_lims_dataset(dataset, robust, 
+                                           min_quartile, max_quartile)
+    else: 
+        vmin,vmax = get_color_lims_dataArray(dataset, robust,
+                                             min_quartile, max_quartile)
+    
+    return vmin, vmax
 
 def get_grid_extent(dataArray: xr.DataArray) -> list:
     """
@@ -318,7 +365,7 @@ def get_extent(inputdata) -> list:
     """
     Get extent from Datarray or GeoDataframe  [x_min, x_max, y_min, y_max]
     """
-    if isinstance(inputdata, xr.DataArray):
+    if isinstance(inputdata, xr.DataArray) or isinstance(inputdata, xr.Dataset):
         return get_grid_extent(inputdata)
     elif isinstance(inputdata, gpd.GeoDataFrame):
         return get_polygon_extent(inputdata)
@@ -449,6 +496,21 @@ def get_measure_from_variable(variable: str):
         if post_measure in variable:
             return post_measure
 
+def get_variable_groups_from_dataset(ds: xr.Dataset):
+    variable_groups = {'n_counts':[], 'concentration_area':[],
+                       'concentration_volume':[], 'residence_time':[]}
+    
+    for ds_var_key in ds.keys():
+        for key in variable_groups.keys():
+            if key in ds_var_key:
+                variable_groups[key].append(ds_var_key)
+    
+    dsList = []
+    for key, value in variable_groups.items():
+        if value: #Check the list is not empty
+            dsList.append(ds[value])
+    
+    return dsList
 
 def get_cbar_position(axarr: list):
     """
@@ -543,6 +605,107 @@ def scale_bar(ax, proj, length, location=(0.5, 0.05), linewidth=3,
             linewidth=linewidth, zorder=3)
 
 
+class Background:
+    
+    def __init__(self, extent, proj=ccrs.PlateCarree()):
+        self.gray_color_RGB = np.array((0.75, 0.75, 0.75))
+        self.extent = extent
+        self.land_map = []
+        self.proj = proj
+        self.color_norm = []
+        self.ShortExtent = True
+    
+    def isShortExtent(self):
+        self.extent_width =  np.abs(self.extent[1]-self.extent[0])
+        if self.extent_width > 2:  # one degree ~ 111 km
+            self.shortExtent = True
+        else:
+            self.shortExtent = False
+            
+    def setLandForShortExtent(self):
+        self.land_map = cfeature.NaturalEarthFeature('physical', 'land', '10m',
+                                        edgecolor='face',
+                                        facecolor=self.gray_color_RGB)
+    
+    def setLandForLargeExtent(self):
+        self.land_map = cimgt.Stamen('toner-background')
+        self.land_map.desired_tile_form = 'L'
+            # tile - color limist RGB [0, 256]
+            # 0 -  5 water - white
+            # 5 - 64 land - white gray
+        boundaries_RGB_tiles = [0, 5, 64]
+        self.color_norm = mcolors.BoundaryNorm(boundaries=boundaries_RGB_tiles, ncolors=64)
+    
+    def setLand(self):
+        if self.shortExtent:
+            self.setLandForShortExtent()
+        else:
+            self.setLandForLargeExtent()
+        
+    def addLandToAxis(self, ax):
+        if self.shortExtent:
+            ax.add_feature(self.land_map)
+            ax.add_feature(cfeature.OCEAN, color='white')
+        else:
+            ax.add_image(self.land_map, 11, cmap='gray_r', norm=self.color_norm)
+        return ax
+        
+    def addGridLabelsToAxis(self, ax):
+        gl = ax.gridlines(draw_labels=True, color='gray', linestyle='--')
+        gl.xlabels_top = gl.ylabels_right = False
+        gl.xformatter = LONGITUDE_FORMATTER
+        gl.yformatter = LATITUDE_FORMATTER
+        
+        extent_width  = self.extent[1] - self.extent[0]
+        extent_height = self.extent[3] - self.extent[2]
+        if extent_height > extent_width:
+            gl.xlabel_style = {'rotation': 45}
+        return ax
+    
+    def initialize(self):
+        self.isShortExtent()
+        self.setLand()
+    
+    def addBackgroundToAxis(self, axarr):
+        if isinstance(axarr, np.ndarray):
+            for ax in axarr.flat:
+                self.addLandToAxis(ax)
+                self.addGridLabelsToAxis(ax)
+        else:
+            self.addLandToAxis(axarr)
+            self.addGridLinesLabels(axarr)
+        return axarr
+    
+          
+class Colorbar:
+    
+    def __init__(self,):
+        self.cbar_key = []
+        self.vmin = []
+        self.vmax = []
+        self.cbar = []
+        self.units = []
+    
+    def setUnits(self,units):
+        self.units = units
+        
+    def setMinMaxColor(self, ds):
+        self.vmin, self.vmax = get_color_lims(ds, robust=True)
+    
+    def setCmapKey(self, cmap_key = None):
+        if cmap_key == None:
+            self.cmap_key = get_cmap_key(self.vmin, self.vmax)
+        else:
+            self.cmap_key = cmap_key
+
+    def addColorbarToFigure(self, axarr, fig):
+        cmap_norm = get_cmap_norm(self.vmin, self.vmax)
+        cbar_x, cbar_y, size_x, size_y = get_cbar_position(axarr) # get extent
+        cbar_ax = fig.add_axes([cbar_x, cbar_y, size_x, size_y])
+        scalarMap = cmx.ScalarMappable(norm=cmap_norm, cmap=self.cmap_key)
+        self.cbar = fig.colorbar(scalarMap, cax=cbar_ax)
+        self.cbar.set_label(self.units)
+
 
 class Normalizer:
     
@@ -612,3 +775,16 @@ class Normalizer:
             da.values = da.values/self.factor
 
         return da
+    
+    def getNormalizedDataset(self, ds):
+        if self.method == 'total':
+            # units are place before.
+            # Datarray lost attributes whern dataArray arithmetic broadcast.
+            # is done
+            ds = (ds/self.factor)*100.
+        elif (self.method == 'mean') or (self.method == 'mean-zonal'):
+            ds = ds/self.factor[0]
+        elif self.method == 'max':
+            ds = ds/self.factor
+
+        return ds
