@@ -16,6 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
+import copy
 
 
 class Plot:
@@ -117,8 +118,8 @@ class PlotPolygon(Plot):
     def __init__(self, polygon_file):
         Plot.__init__(self)
         self.polygon_file = polygon_file
-        self.geoDataFrame = gpd.read_file(self.polygon_file).to_crs({"init": 'EPSG:4326'})
-        self.geoDataFrame['index'] = np.arange(0, self.geoDataFrame.shape[0])
+        self.rawGeoDataFrame = gpd.read_file(self.polygon_file).to_crs({"init": 'EPSG:4326'})
+        self.rawGeoDataFrame['index'] = np.arange(0, self.rawGeoDataFrame.shape[0])
 
     def getSetupDict(self, ax):
         
@@ -138,6 +139,7 @@ class PlotPolygon(Plot):
         dataArray = self.setSliceTimeDataArray(dataArray)
         self.axarr = self.background.addBackgroundToAxis(self.axarr)
         self.colorbar.addColorbarToFigure(self.axarr, self.fig)
+        geoDataFrame = copy.deepcopy(self.rawGeoDataFrame)
         
         time_step = 0
         for ax in self.axarr.flat:
@@ -148,11 +150,10 @@ class PlotPolygon(Plot):
                 dataArray_step = dataArray
 
             varName = dataArray.name
-            self.geoDataFrame[varName] = dataArray_step.values
-
+            geoDataFrame[varName] = dataArray_step.values
             setupPlotDict = self.getSetupDict(ax)
 
-            self.geoDataFrame.plot(column=varName, **setupPlotDict)
+            geoDataFrame.plot(column=varName, **setupPlotDict)
             time_step += 1
 
         # Creating the suptitle from the filename
@@ -161,7 +162,7 @@ class PlotPolygon(Plot):
         self.fig.savefig(output_filename, dpi=150)
         # Save the shapefile
         shapefile = output_filename.split('.')[0]+'.shp'
-        self.geoDataFrame.to_file(shapefile)
+        geoDataFrame.to_file(shapefile)
         plt.close()
 
 
@@ -259,7 +260,7 @@ def plotResultsFromRecipe(outDir, xml_recipe):
     # all the stuff to work properly.
     if polygon_file:
         plotter = PlotPolygon(polygon_file[0])
-        extent = get_extent(plotter.geoDataFrame)
+        extent = get_extent(plotter.rawGeoDataFrame)
     elif plot_type:
         plotter = PlotGrid(plot_type[0])
         extent = get_extent(ds_raw)
@@ -302,6 +303,8 @@ def plotResultsFromRecipe(outDir, xml_recipe):
                 units = normalizer.getNormalizedUnits(da.units)
             else:
                 units = da.units
+            
+            # add the units to the colorbar
             cb.setUnits(units)
     
             if weight_file:
