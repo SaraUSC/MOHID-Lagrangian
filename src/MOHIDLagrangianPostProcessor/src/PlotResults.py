@@ -298,7 +298,7 @@ def plotResultsFromRecipe(outDir, xml_recipe):
         
         for idxvar, variable in enumerate(tqdm(variables)):
             da = ds[variable].load()
-            if normalizer:
+            if normalize_method:
                 units = normalizer.getNormalizedUnits(da.units)
             else:
                 units = da.units

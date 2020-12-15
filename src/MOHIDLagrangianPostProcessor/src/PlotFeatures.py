@@ -286,7 +286,7 @@ def get_color_lims_dataArray(dataArray: xr.DataArray, robust: bool = True,
     return vmin, vmax
 
 def get_color_lims_dataset(dataset: xr.Dataset, robust: bool = True,
-                   min_quartile=0.05, max_quartile=0.99):
+                   min_quartile=0.05, max_quartile=0.95):
     """
     Get the vmax and vmin from the dataArray
 
@@ -304,6 +304,7 @@ def get_color_lims_dataset(dataset: xr.Dataset, robust: bool = True,
     """
     vmin = []
     vmax = []
+    # Loop over for each variable to obtain min and max
     if robust is True:
         for key in dataset.keys():
             vmin.append(dataset[key].quantile(min_quartile).values)
