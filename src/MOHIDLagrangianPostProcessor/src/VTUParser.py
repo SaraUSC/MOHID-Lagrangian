@@ -1,7 +1,5 @@
 """
-Created on Wed Jun  3 12:29:02 2020
-
-@author: gfnl143
+Module to read vtu files. 
 """
 
 import vtk
@@ -22,6 +20,7 @@ class VTUParser:
         self.availableVtuVars = self.getAvailableVars()
 
     def getfileList(self):
+        
         vtuList = glob.glob(self.outDir+'/*_?????.vtu')
         vtuList.sort()
         parentFile = vtuList[0]
@@ -31,7 +30,17 @@ class VTUParser:
     def updateFileList(self, fileList):
         self.fileList = fileList
 
-    def getNumberOfVars(self, file=None) -> list:
+    def getNumberOfVars(self, file=None) -> int:
+        """Get the number of variables available in a vtu file.
+
+        Args:
+            file (str, optional): name of the input file. Defaults to None.
+
+        Returns:
+            int: number of available variables.
+
+        """
+
         if file is None:
             self.vtkReader.SetFileName(self.parentFile)
             self.vtkReader.Update()
@@ -42,6 +51,15 @@ class VTUParser:
         return number_of_arrays
 
     def getAvailableVars(self, file=None) -> list:
+        """Get the names of the variables available in a vtu files.
+
+        Args:
+            file (str, optional): name of the input file. Defaults to None.
+
+        Returns:
+            int: number of available variables.
+
+        """
         if file is None:
             self.vtkReader.SetFileName(self.parentFile)
             self.vtkReader.Update()
@@ -54,12 +72,25 @@ class VTUParser:
         return variableList
 
     def updateReaderWithFile(self, fileName):
+        """Updates the VTUParser reader with the provided filename attributes."""
         self.vtkReader.SetFileName(fileName)
         self.vtkReader.Update()
         self.nvars = self.getNumberOfVars(fileName)
         self.availableVtuVars = self.getAvailableVars(fileName)
 
     def getVariableData(self, variableName, source='global', beachCondition=None):
+        """Reads the variable from the current VTU filename.
+
+        Args:
+            variableName (str): available vtu variable.
+            source (str, optional): source name to read. Defaults to 'global'.
+            beachCondition (str, optional): '0,1,2'. . Defaults to None.
+
+        Returns:
+            vtuVarArray (np.array): Array with variable choosen
+
+        """
+        
         sourceMask = getSourceMaskFromVTU(self.vtkReader, source)
         beachMask = getBeachMaskFromVTU(self.vtkReader, beachCondition)
         vtuVarArray = getVariableFromVTU(self.vtkReader, variableName)
